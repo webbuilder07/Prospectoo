@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>YouTube Influencer Analyzer</title>
+    <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+    <div class="popup-container">
+        <!-- Header -->
+        <div class="header">
+            <div class="logo">
+                <img src="../icons/icon48.png" alt="Logo" class="logo-img">
+                <h1 class="title">YT Analyzer</h1>
+            </div>
+            <div class="status-indicator" id="statusIndicator">
+                <span class="status-dot"></span>
+                <span class="status-text">Ready</span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content" id="mainContent">
+            <!-- Loading State -->
+            <div class="loading-state" id="loadingState" style="display: none;">
+                <div class="loader"></div>
+                <p>Analyzing channel...</p>
+            </div>
+
+            <!-- Channel Not Found -->
+            <div class="not-found-state" id="notFoundState" style="display: none;">
+                <div class="icon-placeholder">📺</div>
+                <h3>No YouTube Channel Found</h3>
+                <p>Navigate to a YouTube channel page to analyze influencer metrics.</p>
+                <button class="btn-primary" id="refreshBtn">Refresh</button>
+            </div>
+
+            <!-- Channel Analytics -->
+            <div class="analytics-container" id="analyticsContainer" style="display: none;">
+                <!-- Channel Header -->
+                <div class="channel-header">
+                    <img src="" alt="Channel Avatar" class="channel-avatar" id="channelAvatar">
+                    <div class="channel-info">
+                        <h3 class="channel-name" id="channelName">Loading...</h3>
+                        <p class="channel-handle" id="channelHandle">@loading</p>
+                    </div>
+                    <button class="btn-save" id="saveChannelBtn">
+                        <span class="save-icon">💾</span>
+                        Save
+                    </button>
+                </div>
+
+                <!-- Key Metrics -->
+                <div class="metrics-grid">
+                    <div class="metric-card">
+                        <div class="metric-label">Subscribers</div>
+                        <div class="metric-value" id="subscriberCount">-</div>
+                        <div class="metric-change positive" id="subscriberGrowth">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Engagement Rate</div>
+                        <div class="metric-value" id="engagementRate">-</div>
+                        <div class="metric-change" id="engagementTrend">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Avg Views</div>
+                        <div class="metric-value" id="avgViews">-</div>
+                        <div class="metric-change" id="viewsTrend">-</div>
+                    </div>
+                    <div class="metric-card">
+                        <div class="metric-label">Upload Freq</div>
+                        <div class="metric-value" id="uploadFreq">-</div>
+                        <div class="metric-change neutral">per week</div>
+                    </div>
+                </div>
+
+                <!-- Contact Information -->
+                <div class="contact-section">
+                    <h4 class="section-title">
+                        <span class="section-icon">📧</span>
+                        Contact Information
+                    </h4>
+                    <div class="contact-grid">
+                        <div class="contact-item">
+                            <span class="contact-label">Email:</span>
+                            <span class="contact-value" id="channelEmail">Searching...</span>
+                            <button class="copy-btn" id="copyEmailBtn" style="display: none;">Copy</button>
+                        </div>
+                        <div class="contact-item">
+                            <span class="contact-label">Business:</span>
+                            <span class="contact-value" id="businessEmail">-</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Audience Demographics -->
+                <div class="demographics-section">
+                    <h4 class="section-title">
+                        <span class="section-icon">👥</span>
+                        Audience Demographics
+                    </h4>
+                    <div class="demo-grid">
+                        <div class="demo-item">
+                            <span class="demo-label">Age Group:</span>
+                            <span class="demo-value" id="ageGroup">18-34 (65%)</span>
+                        </div>
+                        <div class="demo-item">
+                            <span class="demo-label">Gender:</span>
+                            <span class="demo-value" id="genderSplit">60% M / 40% F</span>
+                        </div>
+                        <div class="demo-item">
+                            <span class="demo-label">Top Location:</span>
+                            <span class="demo-value" id="topLocation">United States</span>
+                        </div>
+                        <div class="demo-item">
+                            <span class="demo-label">Fake Followers:</span>
+                            <span class="demo-value fake-score" id="fakeScore">2.3%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Similar Channels -->
+                <div class="similar-section">
+                    <h4 class="section-title">
+                        <span class="section-icon">🔍</span>
+                        Similar Channels
+                        <button class="btn-secondary" id="findSimilarBtn">Find More</button>
+                    </h4>
+                    <div class="similar-list" id="similarChannels">
+                        <div class="similar-item">
+                            <img src="" alt="Similar Channel" class="similar-avatar">
+                            <div class="similar-info">
+                                <div class="similar-name">Loading similar channels...</div>
+                                <div class="similar-subs">-</div>
+                            </div>
+                            <div class="similar-score">-</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Action Buttons -->
+                <div class="action-buttons">
+                    <button class="btn-primary full-width" id="fullReportBtn">
+                        View Full Report
+                    </button>
+                    <div class="action-row">
+                        <button class="btn-secondary" id="exportBtn">Export Data</button>
+                        <button class="btn-secondary" id="shareBtn">Share</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="footer">
+            <div class="credits">
+                <span>Free YouTube Analytics</span>
+                <a href="#" id="dashboardLink">Dashboard</a>
+            </div>
+        </div>
+    </div>
+
+    <script src="popup.js"></script>
+</body>
+</html>
