@@ -1,262 +1,565 @@
 const axios = require('axios');
-const { logger } = require('../utils/logger');
 const Channel = require('../models/Channel');
+const { logger } = require('../utils/logger');
 
 class AnalyticsService {
     constructor() {
         this.youtubeApiKey = process.env.YOUTUBE_API_KEY;
-        this.youtubeBaseUrl = 'https://www.googleapis.com/youtube/v3';
+        this.youtubeApiBase = 'https://www.googleapis.com/youtube/v3';
+        this.maxRetries = 3;
+        this.retryDelay = 1000;
     }
 
     async analyzeChannel(channelData) {
         try {
-            logger.info(`Starting comprehensive analysis for channel: ${channelData.channelName}`);
+            logger.info(`Starting analysis for channel: ${channelData.name || channelData.channelName}`);
 
-            // Step 1: Get or resolve channel ID
-            const channelId = await this.resolveChannelId(channelData);
+            // Get channel details from YouTube API
+            const channelDetails = await this.getChannelDetails(channelData);
+            if (!channelDetails) {
+                logger.warn('Could not fetch channel details, using mock data');
+                return this.generateMockAnalysis(channelData);
+            }
+
+            // Get recent videos for engagement analysis
+            const recentVideos = await this.getRecentVideos(channelDetails.id);
+
+            // Calculate comprehensive metrics
+            const metrics = this.calculateMetrics(channelDetails, recentVideos);
             
-            // Step 2: Fetch comprehensive channel data
-            const channelInfo = await this.fetchChannelDetails(channelId);
-            
-            // Step 3: Analyze recent videos for engagement
-            const videoAnalysis = await this.analyzeRecentVideos(channelId);
-            
-            // Step 4: Estimate demographics (would use YouTube Analytics API with proper auth)
-            const demographics = await this.estimateDemographics(channelInfo, videoAnalysis);
-            
-            // Step 5: Calculate quality metrics
-            const qualityMetrics = await this.calculateQualityMetrics(channelInfo, videoAnalysis);
-            
-            // Step 6: Format comprehensive response
+            // Prepare analysis result
             const analysisResult = {
                 channelInfo: {
-                    name: channelInfo.snippet.title,
-                    handle: channelData.channelHandle || this.extractHandleFromUrl(channelData.url),
-                    avatar: channelInfo.snippet.thumbnails.medium?.url || channelData.avatarUrl,
-                    description: channelInfo.snippet.description,
-                    subscribers: this.parseSubscriberCount(channelInfo.statistics.subscriberCount),
-                    url: channelData.url,
-                    channelId: channelId
+                    channelId: channelDetails.id,
+                    name: channelDetails.snippet?.title || channelData.name,
+                    handle: channelData.channelHandle || channelData.handle,
+                    description: channelDetails.snippet?.description || '',
+                    avatar: channelDetails.snippet?.thumbnails?.high?.url || '',
+                    url: channelData.url || `https://www.youtube.com/channel/${channelDetails.id}`
                 },
-                metrics: {
-                    subscribers: this.formatNumber(parseInt(channelInfo.statistics.subscriberCount)),
-                    subscriberGrowth: this.estimateGrowthRate(channelInfo.statistics.subscriberCount),
-                    engagementRate: this.calculateEngagementRate(videoAnalysis),
-                    engagementTrend: this.calculateEngagementTrend(videoAnalysis),
-                    avgViews: this.formatNumber(videoAnalysis.averageViews),
-                    viewsTrend: this.calculateViewsTrend(videoAnalysis),
-                    uploadFreq: this.calculateUploadFrequency(videoAnalysis)
-                },
-                demographics: demographics,
-                content: {
-                    category: channelInfo.snippet.category || this.inferCategory(channelInfo, videoAnalysis),
-                    tags: this.extractTags(channelInfo, videoAnalysis),
-                    avgVideoLength: videoAnalysis.avgDuration,
-                    recentVideos: videoAnalysis.videos.slice(0, 10)
-                },
-                quality: qualityMetrics,
-                analysis: {
-                    lastAnalyzed: new Date(),
-                    dataFreshness: 'fresh',
-                    sources: [
-                        {
-                            source: 'youtube_api',
-                            lastUpdated: new Date(),
-                            confidence: 0.95
-                        }
-                    ]
-                }
+                metrics: metrics,
+                content: this.analyzeContent(channelDetails, recentVideos),
+                lastAnalyzed: new Date()
             };
 
-            // Step 7: Save to database
-            await this.saveAnalysisToDatabase(analysisResult);
+            // Save to database
+            await this.saveChannelData(analysisResult);
 
-            logger.success(`Completed analysis for channel: ${channelInfo.snippet.title}`);
+            logger.success(`Analysis completed for ${analysisResult.channelInfo.name}`);
             return analysisResult;
 
         } catch (error) {
-            logger.error('Analytics service error:', error);
-            
-            // Fallback to mock data if API fails
+            logger.error('Analytics error:', error);
             return this.generateMockAnalysis(channelData);
         }
     }
 
-    async resolveChannelId(channelData) {
-        if (channelData.channelId) {
-            return channelData.channelId;
-        }
-
-        if (channelData.channelHandle) {
-            return await this.getChannelIdByHandle(channelData.channelHandle);
-        }
-
-        if (channelData.url) {
-            return this.extractChannelIdFromUrl(channelData.url);
-        }
-
-        throw new Error('Unable to resolve channel ID');
-    }
-
-    async getChannelIdByHandle(handle) {
+    async getChannelDetails(channelData) {
         try {
-            const response = await axios.get(`${this.youtubeBaseUrl}/search`, {
-                params: {
-                    key: this.youtubeApiKey,
-                    q: handle,
-                    type: 'channel',
-                    part: 'snippet',
-                    maxResults: 1
-                }
-            });
-
-            if (response.data.items && response.data.items.length > 0) {
-                return response.data.items[0].snippet.channelId;
+            if (!this.youtubeApiKey) {
+                logger.warn('YouTube API key not configured');
+                return null;
             }
 
-            throw new Error('Channel not found by handle');
-        } catch (error) {
-            logger.error('Error resolving channel by handle:', error);
-            throw error;
-        }
-    }
+            let channelId = channelData.channelId;
 
-    extractChannelIdFromUrl(url) {
-        const patterns = [
-            /\/channel\/([a-zA-Z0-9_-]+)/,
-            /\/c\/([a-zA-Z0-9_-]+)/,
-            /\/user\/([a-zA-Z0-9_-]+)/,
-            /\/@([a-zA-Z0-9_-]+)/
-        ];
-
-        for (const pattern of patterns) {
-            const match = url.match(pattern);
-            if (match) {
-                return match[1];
+            // If we don't have channelId, try to get it from handle or username
+            if (!channelId && (channelData.channelHandle || channelData.handle)) {
+                channelId = await this.getChannelIdFromHandle(channelData.channelHandle || channelData.handle);
             }
-        }
 
-        throw new Error('Unable to extract channel ID from URL');
-    }
+            if (!channelId) {
+                logger.warn('Could not determine channel ID');
+                return null;
+            }
 
-    async fetchChannelDetails(channelId) {
-        try {
-            const response = await axios.get(`${this.youtubeBaseUrl}/channels`, {
+            const response = await axios.get(`${this.youtubeApiBase}/channels`, {
                 params: {
                     key: this.youtubeApiKey,
                     id: channelId,
-                    part: 'snippet,statistics,brandingSettings,status'
-                }
+                    part: 'snippet,statistics,contentDetails,brandingSettings'
+                },
+                timeout: 10000
             });
 
-            if (!response.data.items || response.data.items.length === 0) {
-                throw new Error('Channel not found');
+            if (response.data.items && response.data.items.length > 0) {
+                return response.data.items[0];
             }
 
-            return response.data.items[0];
+            return null;
+
         } catch (error) {
             logger.error('Error fetching channel details:', error);
-            throw error;
+            return null;
         }
     }
 
-    async analyzeRecentVideos(channelId, maxResults = 50) {
+    async getChannelIdFromHandle(handle) {
         try {
-            // Get recent videos
-            const searchResponse = await axios.get(`${this.youtubeBaseUrl}/search`, {
+            // Clean handle (remove @ if present)
+            const cleanHandle = handle.replace('@', '');
+
+            const response = await axios.get(`${this.youtubeApiBase}/search`, {
+                params: {
+                    key: this.youtubeApiKey,
+                    q: cleanHandle,
+                    type: 'channel',
+                    part: 'snippet',
+                    maxResults: 1
+                },
+                timeout: 10000
+            });
+
+            if (response.data.items && response.data.items.length > 0) {
+                return response.data.items[0].id.channelId;
+            }
+
+            return null;
+
+        } catch (error) {
+            logger.error('Error getting channel ID from handle:', error);
+            return null;
+        }
+    }
+
+    async getRecentVideos(channelId) {
+        try {
+            if (!this.youtubeApiKey) return [];
+
+            const response = await axios.get(`${this.youtubeApiBase}/search`, {
                 params: {
                     key: this.youtubeApiKey,
                     channelId: channelId,
                     type: 'video',
                     part: 'snippet',
                     order: 'date',
-                    maxResults: maxResults
-                }
+                    maxResults: 10
+                },
+                timeout: 10000
             });
 
-            if (!searchResponse.data.items || searchResponse.data.items.length === 0) {
-                return this.getDefaultVideoAnalysis();
-            }
-
-            const videoIds = searchResponse.data.items.map(item => item.id.videoId).join(',');
+            if (!response.data.items) return [];
 
             // Get detailed video statistics
-            const videosResponse = await axios.get(`${this.youtubeBaseUrl}/videos`, {
+            const videoIds = response.data.items.map(item => item.id.videoId).join(',');
+            
+            const statsResponse = await axios.get(`${this.youtubeApiBase}/videos`, {
                 params: {
                     key: this.youtubeApiKey,
                     id: videoIds,
                     part: 'statistics,contentDetails,snippet'
-                }
+                },
+                timeout: 10000
             });
 
-            const videos = videosResponse.data.items.map(video => ({
-                videoId: video.id,
-                title: video.snippet.title,
-                publishedAt: video.snippet.publishedAt,
-                views: parseInt(video.statistics.viewCount) || 0,
-                likes: parseInt(video.statistics.likeCount) || 0,
-                comments: parseInt(video.statistics.commentCount) || 0,
-                duration: this.parseDuration(video.contentDetails.duration)
-            }));
-
-            // Calculate metrics
-            const totalViews = videos.reduce((sum, video) => sum + video.views, 0);
-            const totalLikes = videos.reduce((sum, video) => sum + video.likes, 0);
-            const totalComments = videos.reduce((sum, video) => sum + video.comments, 0);
-            const totalDuration = videos.reduce((sum, video) => sum + video.duration, 0);
-
-            return {
-                videos: videos,
-                totalVideos: videos.length,
-                averageViews: Math.round(totalViews / videos.length),
-                averageLikes: Math.round(totalLikes / videos.length),
-                averageComments: Math.round(totalComments / videos.length),
-                avgDuration: Math.round(totalDuration / videos.length),
-                totalEngagement: totalLikes + totalComments,
-                uploadFrequency: this.calculateUploadFreq(videos)
-            };
+            return statsResponse.data.items || [];
 
         } catch (error) {
-            logger.error('Error analyzing recent videos:', error);
-            return this.getDefaultVideoAnalysis();
+            logger.error('Error fetching recent videos:', error);
+            return [];
         }
     }
 
-    async estimateDemographics(channelInfo, videoAnalysis) {
-        // In a production environment, this would use YouTube Analytics API
-        // For now, we'll generate realistic estimates based on channel category and content
+    calculateMetrics(channelDetails, recentVideos) {
+        const stats = channelDetails.statistics || {};
         
-        const category = channelInfo.snippet.category || 'Entertainment';
-        const subscriberCount = parseInt(channelInfo.statistics.subscriberCount);
+        // Basic metrics
+        const subscriberCount = parseInt(stats.subscriberCount) || 0;
+        const totalViews = parseInt(stats.viewCount) || 0;
+        const videoCount = parseInt(stats.videoCount) || 0;
+
+        // Calculate engagement metrics from recent videos
+        const engagement = this.calculateEngagementMetrics(recentVideos);
+        
+        // Calculate upload frequency
+        const uploadFreq = this.calculateUploadFrequency(recentVideos);
+
+        // Estimate growth (would need historical data for accurate calculation)
+        const estimatedGrowth = this.estimateGrowth(subscriberCount, engagement.avgViews);
 
         return {
-            ageGroup: this.estimateAgeGroup(category, videoAnalysis),
-            genderSplit: this.estimateGenderSplit(category),
-            topLocation: this.estimateTopLocation(channelInfo),
-            fakeScore: this.estimateFakeFollowerScore(subscriberCount, videoAnalysis)
+            subscriberCount: subscriberCount,
+            subscriberGrowth: estimatedGrowth.subscribers,
+            videoCount: videoCount,
+            viewCount: totalViews,
+            avgViews: engagement.avgViews,
+            avgViewsGrowth: estimatedGrowth.views,
+            engagementRate: engagement.rate,
+            engagementTrend: engagement.trend,
+            uploadFrequency: uploadFreq,
+            lastUploadDate: this.getLastUploadDate(recentVideos),
+            recentVideos: this.formatRecentVideos(recentVideos),
+            monthlyGrowth: {
+                subscribers: estimatedGrowth.subscribers,
+                views: estimatedGrowth.views,
+                engagement: engagement.trend
+            }
         };
     }
 
-    async calculateQualityMetrics(channelInfo, videoAnalysis) {
-        const subscriberCount = parseInt(channelInfo.statistics.subscriberCount);
-        const avgViews = videoAnalysis.averageViews;
-        const avgEngagement = videoAnalysis.totalEngagement / videoAnalysis.totalVideos;
+    calculateEngagementMetrics(videos) {
+        if (!videos || videos.length === 0) {
+            return { rate: 0, avgViews: 0, trend: 0 };
+        }
+
+        let totalViews = 0;
+        let totalLikes = 0;
+        let totalComments = 0;
+        let engagementRates = [];
+
+        videos.forEach(video => {
+            const stats = video.statistics || {};
+            const views = parseInt(stats.viewCount) || 0;
+            const likes = parseInt(stats.likeCount) || 0;
+            const comments = parseInt(stats.commentCount) || 0;
+
+            totalViews += views;
+            totalLikes += likes;
+            totalComments += comments;
+
+            if (views > 0) {
+                const engagementRate = ((likes + comments) / views) * 100;
+                engagementRates.push(engagementRate);
+            }
+        });
+
+        const avgViews = Math.round(totalViews / videos.length);
+        const avgEngagementRate = engagementRates.length > 0 
+            ? engagementRates.reduce((a, b) => a + b, 0) / engagementRates.length 
+            : 0;
+
+        // Calculate trend (simplified - would need historical data)
+        const trend = engagementRates.length > 1 
+            ? ((engagementRates[0] - engagementRates[engagementRates.length - 1]) / engagementRates[engagementRates.length - 1]) * 100
+            : 0;
 
         return {
-            fakeFollowerScore: this.estimateFakeFollowerScore(subscriberCount, videoAnalysis),
-            engagementQuality: this.calculateEngagementQuality(avgViews, avgEngagement, subscriberCount),
-            contentConsistency: this.calculateContentConsistency(videoAnalysis),
-            isVerified: subscriberCount > 100000, // Simplified verification check
-            isMonetized: subscriberCount > 1000 && videoAnalysis.totalVideos > 10,
-            isKidsContent: this.isKidsContent(channelInfo, videoAnalysis)
+            rate: Math.round(avgEngagementRate * 100) / 100,
+            avgViews: avgViews,
+            trend: Math.round(trend * 100) / 100
         };
     }
 
-    // Utility methods
-    parseSubscriberCount(count) {
-        return parseInt(count) || 0;
+    calculateUploadFrequency(videos) {
+        if (!videos || videos.length < 2) return 0;
+
+        const dates = videos
+            .map(video => new Date(video.snippet.publishedAt))
+            .sort((a, b) => b - a);
+
+        const daysBetween = (dates[0] - dates[dates.length - 1]) / (1000 * 60 * 60 * 24);
+        const uploadsPerWeek = (videos.length / daysBetween) * 7;
+
+        return Math.round(uploadsPerWeek * 10) / 10;
     }
 
+    estimateGrowth(subscriberCount, avgViews) {
+        // Simple growth estimation based on current metrics
+        // In production, this would use historical data
+        
+        const viewToSubRatio = subscriberCount > 0 ? avgViews / subscriberCount : 0;
+        
+        // Estimate based on engagement patterns
+        let subscriberGrowthRate = 0;
+        let viewGrowthRate = 0;
+
+        if (viewToSubRatio > 0.1) {
+            subscriberGrowthRate = Math.random() * 15 + 5; // 5-20%
+            viewGrowthRate = Math.random() * 20 + 10; // 10-30%
+        } else if (viewToSubRatio > 0.05) {
+            subscriberGrowthRate = Math.random() * 10 + 2; // 2-12%
+            viewGrowthRate = Math.random() * 15 + 5; // 5-20%
+        } else {
+            subscriberGrowthRate = Math.random() * 5; // 0-5%
+            viewGrowthRate = Math.random() * 10; // 0-10%
+        }
+
+        return {
+            subscribers: Math.round(subscriberGrowthRate * 100) / 100,
+            views: Math.round(viewGrowthRate * 100) / 100
+        };
+    }
+
+    getLastUploadDate(videos) {
+        if (!videos || videos.length === 0) return null;
+        
+        const dates = videos.map(video => new Date(video.snippet.publishedAt));
+        return new Date(Math.max(...dates));
+    }
+
+    formatRecentVideos(videos) {
+        if (!videos) return [];
+        
+        return videos.slice(0, 5).map(video => ({
+            title: video.snippet?.title || 'Unknown Title',
+            views: parseInt(video.statistics?.viewCount) || 0,
+            likes: parseInt(video.statistics?.likeCount) || 0,
+            comments: parseInt(video.statistics?.commentCount) || 0,
+            duration: video.contentDetails?.duration || 'PT0S',
+            publishedAt: new Date(video.snippet?.publishedAt)
+        }));
+    }
+
+    analyzeContent(channelDetails, recentVideos) {
+        const snippet = channelDetails.snippet || {};
+        const recentTitles = recentVideos.map(v => v.snippet?.title || '').join(' ').toLowerCase();
+        
+        // Extract categories/topics from titles and description
+        const categories = this.extractCategories(snippet.description + ' ' + recentTitles);
+        const tags = this.extractTags(recentTitles);
+        
+        // Calculate average video length
+        const avgVideoLength = this.calculateAverageVideoLength(recentVideos);
+        
+        // Detect upload schedule pattern
+        const uploadSchedule = this.detectUploadSchedule(recentVideos);
+        
+        return {
+            categories: categories,
+            tags: tags,
+            language: snippet.defaultLanguage || snippet.country || 'en',
+            avgVideoLength: avgVideoLength,
+            uploadSchedule: uploadSchedule,
+            contentTypes: this.detectContentTypes(recentTitles),
+            collaboration: this.detectCollaborations(recentVideos)
+        };
+    }
+
+    extractCategories(text) {
+        const categoryKeywords = {
+            'gaming': ['game', 'gaming', 'play', 'stream', 'walkthrough', 'review'],
+            'tech': ['tech', 'technology', 'review', 'unbox', 'gadget', 'phone', 'computer'],
+            'education': ['tutorial', 'learn', 'guide', 'how to', 'explain', 'course'],
+            'entertainment': ['funny', 'comedy', 'entertainment', 'reaction', 'vlog'],
+            'music': ['music', 'song', 'cover', 'instrumental', 'audio'],
+            'lifestyle': ['lifestyle', 'daily', 'routine', 'life', 'personal'],
+            'beauty': ['makeup', 'beauty', 'skincare', 'hair', 'fashion'],
+            'fitness': ['workout', 'fitness', 'exercise', 'gym', 'health'],
+            'cooking': ['cooking', 'recipe', 'food', 'kitchen', 'chef'],
+            'travel': ['travel', 'trip', 'journey', 'explore', 'adventure']
+        };
+
+        const categories = [];
+        const textLower = text.toLowerCase();
+
+        for (const [category, keywords] of Object.entries(categoryKeywords)) {
+            if (keywords.some(keyword => textLower.includes(keyword))) {
+                categories.push(category);
+            }
+        }
+
+        return categories.length > 0 ? categories : ['general'];
+    }
+
+    extractTags(text) {
+        // Extract common words as tags
+        const words = text.toLowerCase()
+            .replace(/[^\w\s]/g, '')
+            .split(/\s+/)
+            .filter(word => word.length > 3);
+
+        const wordCount = {};
+        words.forEach(word => {
+            wordCount[word] = (wordCount[word] || 0) + 1;
+        });
+
+        return Object.entries(wordCount)
+            .sort(([,a], [,b]) => b - a)
+            .slice(0, 10)
+            .map(([word]) => word);
+    }
+
+    calculateAverageVideoLength(videos) {
+        if (!videos || videos.length === 0) return 0;
+
+        const durations = videos
+            .map(video => this.parseDuration(video.contentDetails?.duration))
+            .filter(duration => duration > 0);
+
+        if (durations.length === 0) return 0;
+
+        return Math.round(durations.reduce((a, b) => a + b, 0) / durations.length);
+    }
+
+    parseDuration(isoDuration) {
+        if (!isoDuration) return 0;
+        
+        // Parse ISO 8601 duration (PT4M13S -> 253 seconds)
+        const match = isoDuration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+        if (!match) return 0;
+
+        const hours = parseInt(match[1]) || 0;
+        const minutes = parseInt(match[2]) || 0;
+        const seconds = parseInt(match[3]) || 0;
+
+        return hours * 3600 + minutes * 60 + seconds;
+    }
+
+    detectUploadSchedule(videos) {
+        if (!videos || videos.length < 3) return 'irregular';
+
+        const dates = videos
+            .map(video => new Date(video.snippet.publishedAt))
+            .sort((a, b) => b - a);
+
+        const intervals = [];
+        for (let i = 0; i < dates.length - 1; i++) {
+            const daysBetween = (dates[i] - dates[i + 1]) / (1000 * 60 * 60 * 24);
+            intervals.push(daysBetween);
+        }
+
+        const avgInterval = intervals.reduce((a, b) => a + b, 0) / intervals.length;
+
+        if (avgInterval <= 2) return 'daily';
+        if (avgInterval <= 4) return 'every-few-days';
+        if (avgInterval <= 8) return 'weekly';
+        if (avgInterval <= 16) return 'bi-weekly';
+        if (avgInterval <= 32) return 'monthly';
+        return 'irregular';
+    }
+
+    detectContentTypes(titlesText) {
+        const types = [];
+        const text = titlesText.toLowerCase();
+
+        if (text.includes('live') || text.includes('stream')) types.push('live-stream');
+        if (text.includes('short') || text.includes('#shorts')) types.push('shorts');
+        if (text.includes('tutorial') || text.includes('how')) types.push('tutorial');
+        if (text.includes('review') || text.includes('unbox')) types.push('review');
+        if (text.includes('vlog') || text.includes('daily')) types.push('vlog');
+        if (text.includes('reaction') || text.includes('react')) types.push('reaction');
+
+        return types.length > 0 ? types : ['standard'];
+    }
+
+    detectCollaborations(videos) {
+        if (!videos || videos.length === 0) {
+            return {
+                hasCollaborations: false,
+                collaborationFrequency: 0,
+                commonCollaborators: []
+            };
+        }
+
+        const collabKeywords = ['feat', 'featuring', 'with', 'vs', 'collaboration', 'collab'];
+        const collaborationVideos = videos.filter(video => {
+            const title = (video.snippet?.title || '').toLowerCase();
+            return collabKeywords.some(keyword => title.includes(keyword));
+        });
+
+        return {
+            hasCollaborations: collaborationVideos.length > 0,
+            collaborationFrequency: Math.round((collaborationVideos.length / videos.length) * 100),
+            commonCollaborators: [] // Would need more sophisticated analysis
+        };
+    }
+
+    async saveChannelData(analysisResult) {
+        try {
+            const channelData = {
+                channelId: analysisResult.channelInfo.channelId,
+                name: analysisResult.channelInfo.name,
+                handle: analysisResult.channelInfo.handle,
+                description: analysisResult.channelInfo.description,
+                avatar: analysisResult.channelInfo.avatar,
+                url: analysisResult.channelInfo.url,
+                metrics: analysisResult.metrics,
+                content: analysisResult.content,
+                lastAnalyzed: analysisResult.lastAnalyzed
+            };
+
+            await Channel.findOneAndUpdate(
+                { channelId: channelData.channelId },
+                channelData,
+                { upsert: true, new: true }
+            );
+
+            logger.success(`Channel data saved: ${channelData.name}`);
+
+        } catch (error) {
+            logger.error('Error saving channel data:', error);
+        }
+    }
+
+    generateMockAnalysis(channelData) {
+        logger.info('Generating mock analysis data');
+        
+        const mockMetrics = this.generateMockMetrics();
+        
+        return {
+            channelInfo: {
+                channelId: 'mock_' + Date.now(),
+                name: channelData.channelName || channelData.name || 'Sample Channel',
+                handle: channelData.channelHandle || channelData.handle || 'samplechannel',
+                description: channelData.description || 'Sample channel description',
+                avatar: channelData.avatarUrl || 'https://via.placeholder.com/200x200/6366f1/ffffff?text=YT',
+                url: channelData.url || 'https://youtube.com/@samplechannel'
+            },
+            metrics: mockMetrics,
+            content: {
+                categories: ['entertainment', 'lifestyle'],
+                tags: ['sample', 'content', 'youtube', 'creator'],
+                language: 'en',
+                avgVideoLength: 420,
+                uploadSchedule: 'weekly',
+                contentTypes: ['standard', 'shorts'],
+                collaboration: {
+                    hasCollaborations: true,
+                    collaborationFrequency: 25,
+                    commonCollaborators: []
+                }
+            },
+            lastAnalyzed: new Date()
+        };
+    }
+
+    generateMockMetrics() {
+        // Generate realistic mock metrics
+        const subscriberCount = Math.floor(Math.random() * 2000000) + 100000; // 100K - 2M
+        const viewCount = subscriberCount * (Math.random() * 50 + 10); // 10-60x subscriber count
+        const videoCount = Math.floor(Math.random() * 500) + 50; // 50-550 videos
+        const avgViews = Math.floor(subscriberCount * (Math.random() * 0.8 + 0.1)); // 10-90% of subscribers
+        
+        return {
+            subscriberCount: subscriberCount,
+            subscriberGrowth: Math.round((Math.random() * 20 - 5) * 100) / 100, // -5% to 15%
+            videoCount: videoCount,
+            viewCount: viewCount,
+            avgViews: avgViews,
+            avgViewsGrowth: Math.round((Math.random() * 15 - 2) * 100) / 100, // -2% to 13%
+            engagementRate: Math.round((Math.random() * 8 + 1) * 100) / 100, // 1-9%
+            engagementTrend: Math.round((Math.random() * 2 - 0.5) * 100) / 100, // -0.5% to 1.5%
+            uploadFrequency: Math.round((Math.random() * 4 + 0.5) * 10) / 10, // 0.5-4.5 per week
+            lastUploadDate: new Date(Date.now() - Math.random() * 7 * 24 * 60 * 60 * 1000), // Within last week
+            recentVideos: this.generateMockVideos(),
+            monthlyGrowth: {
+                subscribers: Math.round((Math.random() * 15 - 2) * 100) / 100,
+                views: Math.round((Math.random() * 20 - 5) * 100) / 100,
+                engagement: Math.round((Math.random() * 2 - 0.5) * 100) / 100
+            }
+        };
+    }
+
+    generateMockVideos() {
+        const videoTitles = [
+            'Amazing New Discovery!',
+            'Day in My Life Vlog',
+            'Tutorial: How to Get Started',
+            'Reacting to Viral Videos',
+            'Q&A Session with Viewers'
+        ];
+
+        return videoTitles.map(title => ({
+            title: title,
+            views: Math.floor(Math.random() * 1000000) + 10000,
+            likes: Math.floor(Math.random() * 50000) + 1000,
+            comments: Math.floor(Math.random() * 5000) + 100,
+            duration: `PT${Math.floor(Math.random() * 20) + 5}M${Math.floor(Math.random() * 60)}S`,
+            publishedAt: new Date(Date.now() - Math.random() * 30 * 24 * 60 * 60 * 1000)
+        }));
+    }
+
+    // Utility method for formatting numbers
     formatNumber(num) {
         if (num >= 1000000) {
             return (num / 1000000).toFixed(1) + 'M';
@@ -264,295 +567,6 @@ class AnalyticsService {
             return (num / 1000).toFixed(1) + 'K';
         }
         return num.toString();
-    }
-
-    calculateEngagementRate(videoAnalysis) {
-        if (videoAnalysis.averageViews === 0) return '0%';
-        const rate = ((videoAnalysis.totalEngagement / videoAnalysis.totalVideos) / videoAnalysis.averageViews) * 100;
-        return Math.min(rate, 15).toFixed(1) + '%'; // Cap at 15% for realism
-    }
-
-    calculateEngagementTrend(videoAnalysis) {
-        // Simple trend calculation based on recent vs older videos
-        const recentVideos = videoAnalysis.videos.slice(0, 10);
-        const olderVideos = videoAnalysis.videos.slice(10, 20);
-        
-        if (olderVideos.length === 0) return '+0.5%';
-        
-        const recentAvg = recentVideos.reduce((sum, v) => sum + v.likes + v.comments, 0) / recentVideos.length;
-        const olderAvg = olderVideos.reduce((sum, v) => sum + v.likes + v.comments, 0) / olderVideos.length;
-        
-        const change = ((recentAvg - olderAvg) / olderAvg) * 100;
-        return (change >= 0 ? '+' : '') + change.toFixed(1) + '%';
-    }
-
-    calculateViewsTrend(videoAnalysis) {
-        const recentVideos = videoAnalysis.videos.slice(0, 10);
-        const olderVideos = videoAnalysis.videos.slice(10, 20);
-        
-        if (olderVideos.length === 0) return '+2.3%';
-        
-        const recentAvg = recentVideos.reduce((sum, v) => sum + v.views, 0) / recentVideos.length;
-        const olderAvg = olderVideos.reduce((sum, v) => sum + v.views, 0) / olderVideos.length;
-        
-        const change = ((recentAvg - olderAvg) / olderAvg) * 100;
-        return (change >= 0 ? '+' : '') + change.toFixed(1) + '%';
-    }
-
-    calculateUploadFrequency(videoAnalysis) {
-        if (videoAnalysis.videos.length < 2) return '1.0';
-        
-        const videos = videoAnalysis.videos.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
-        const timeSpans = [];
-        
-        for (let i = 0; i < videos.length - 1; i++) {
-            const diff = (new Date(videos[i].publishedAt) - new Date(videos[i + 1].publishedAt)) / (1000 * 60 * 60 * 24);
-            timeSpans.push(diff);
-        }
-        
-        const avgDaysBetween = timeSpans.reduce((sum, span) => sum + span, 0) / timeSpans.length;
-        const videosPerWeek = 7 / avgDaysBetween;
-        
-        return Math.max(0.1, Math.min(10, videosPerWeek)).toFixed(1);
-    }
-
-    estimateGrowthRate(subscriberCount) {
-        // Simulate growth rate based on subscriber count
-        const count = parseInt(subscriberCount);
-        if (count > 1000000) {
-            return ['+1.2%', '+2.1%', '+0.8%'][Math.floor(Math.random() * 3)];
-        } else if (count > 100000) {
-            return ['+3.5%', '+5.2%', '+2.8%'][Math.floor(Math.random() * 3)];
-        } else {
-            return ['+8.7%', '+12.4%', '+15.2%'][Math.floor(Math.random() * 3)];
-        }
-    }
-
-    estimateAgeGroup(category, videoAnalysis) {
-        const ageGroups = {
-            'Gaming': '18-34 (72%)',
-            'Technology': '25-44 (68%)',
-            'Music': '18-24 (65%)',
-            'Education': '25-54 (58%)',
-            'Entertainment': '18-34 (70%)'
-        };
-        
-        return ageGroups[category] || '18-34 (65%)';
-    }
-
-    estimateGenderSplit(category) {
-        const genderSplits = {
-            'Gaming': '75% M / 25% F',
-            'Technology': '70% M / 30% F',
-            'Beauty': '15% M / 85% F',
-            'Cooking': '35% M / 65% F',
-            'Music': '55% M / 45% F'
-        };
-        
-        return genderSplits[category] || '60% M / 40% F';
-    }
-
-    estimateTopLocation(channelInfo) {
-        const locations = ['United States', 'United Kingdom', 'Canada', 'Australia', 'Germany', 'India'];
-        return locations[Math.floor(Math.random() * locations.length)];
-    }
-
-    estimateFakeFollowerScore(subscriberCount, videoAnalysis) {
-        // Simple heuristic: if average views are very low compared to subscribers, higher fake score
-        const viewToSubRatio = videoAnalysis.averageViews / subscriberCount;
-        
-        if (viewToSubRatio < 0.01) return '8.5%';
-        if (viewToSubRatio < 0.05) return '4.2%';
-        if (viewToSubRatio < 0.1) return '2.1%';
-        return '1.3%';
-    }
-
-    parseDuration(duration) {
-        // Parse ISO 8601 duration (PT4M13S) to seconds
-        const match = duration.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
-        if (!match) return 0;
-        
-        const hours = parseInt(match[1]) || 0;
-        const minutes = parseInt(match[2]) || 0;
-        const seconds = parseInt(match[3]) || 0;
-        
-        return hours * 3600 + minutes * 60 + seconds;
-    }
-
-    extractHandleFromUrl(url) {
-        const match = url.match(/\/@([^\/\?]+)/);
-        return match ? match[1] : null;
-    }
-
-    inferCategory(channelInfo, videoAnalysis) {
-        // Simple category inference based on video titles
-        const titles = videoAnalysis.videos.map(v => v.title.toLowerCase()).join(' ');
-        
-        if (titles.includes('game') || titles.includes('gaming')) return 'Gaming';
-        if (titles.includes('tech') || titles.includes('review')) return 'Technology';
-        if (titles.includes('music') || titles.includes('song')) return 'Music';
-        if (titles.includes('cook') || titles.includes('recipe')) return 'Cooking';
-        
-        return 'Entertainment';
-    }
-
-    extractTags(channelInfo, videoAnalysis) {
-        const description = channelInfo.snippet.description.toLowerCase();
-        const titles = videoAnalysis.videos.map(v => v.title.toLowerCase()).join(' ');
-        const text = description + ' ' + titles;
-        
-        const commonTags = ['tech', 'gaming', 'music', 'entertainment', 'educational', 'comedy', 'lifestyle'];
-        return commonTags.filter(tag => text.includes(tag));
-    }
-
-    getDefaultVideoAnalysis() {
-        return {
-            videos: [],
-            totalVideos: 0,
-            averageViews: 1000,
-            averageLikes: 50,
-            averageComments: 10,
-            avgDuration: 300,
-            totalEngagement: 60,
-            uploadFrequency: 1
-        };
-    }
-
-    calculateUploadFreq(videos) {
-        if (videos.length < 2) return 1;
-        
-        const sortedVideos = videos.sort((a, b) => new Date(b.publishedAt) - new Date(a.publishedAt));
-        const daysBetweenUploads = [];
-        
-        for (let i = 0; i < sortedVideos.length - 1; i++) {
-            const diff = (new Date(sortedVideos[i].publishedAt) - new Date(sortedVideos[i + 1].publishedAt)) / (1000 * 60 * 60 * 24);
-            daysBetweenUploads.push(diff);
-        }
-        
-        const avgDays = daysBetweenUploads.reduce((sum, days) => sum + days, 0) / daysBetweenUploads.length;
-        return Math.round((7 / avgDays) * 10) / 10; // Videos per week
-    }
-
-    calculateEngagementQuality(avgViews, avgEngagement, subscriberCount) {
-        const engagementRate = avgEngagement / avgViews;
-        const viewRate = avgViews / subscriberCount;
-        
-        let score = 5; // Base score
-        
-        if (engagementRate > 0.05) score += 2;
-        else if (engagementRate > 0.02) score += 1;
-        
-        if (viewRate > 0.1) score += 2;
-        else if (viewRate > 0.05) score += 1;
-        
-        return Math.min(10, Math.max(1, score));
-    }
-
-    calculateContentConsistency(videoAnalysis) {
-        if (videoAnalysis.videos.length < 5) return 5;
-        
-        // Check upload consistency
-        const uploadDates = videoAnalysis.videos.map(v => new Date(v.publishedAt));
-        const intervals = [];
-        
-        for (let i = 0; i < uploadDates.length - 1; i++) {
-            intervals.push((uploadDates[i] - uploadDates[i + 1]) / (1000 * 60 * 60 * 24));
-        }
-        
-        const avgInterval = intervals.reduce((sum, interval) => sum + interval, 0) / intervals.length;
-        const variance = intervals.reduce((sum, interval) => sum + Math.pow(interval - avgInterval, 2), 0) / intervals.length;
-        const standardDeviation = Math.sqrt(variance);
-        
-        // Lower standard deviation = higher consistency
-        const consistencyScore = Math.max(1, 10 - (standardDeviation / avgInterval) * 5);
-        return Math.round(consistencyScore * 10) / 10;
-    }
-
-    isKidsContent(channelInfo, videoAnalysis) {
-        const description = channelInfo.snippet.description.toLowerCase();
-        const titles = videoAnalysis.videos.map(v => v.title.toLowerCase()).join(' ');
-        const text = description + ' ' + titles;
-        
-        const kidsKeywords = ['kids', 'children', 'baby', 'toddler', 'educational', 'learning', 'cartoon'];
-        return kidsKeywords.some(keyword => text.includes(keyword));
-    }
-
-    async saveAnalysisToDatabase(analysisData) {
-        try {
-            const existingChannel = await Channel.findOne({
-                $or: [
-                    { channelId: analysisData.channelInfo.channelId },
-                    { name: analysisData.channelInfo.name }
-                ]
-            });
-
-            if (existingChannel) {
-                // Update existing channel
-                Object.assign(existingChannel, analysisData);
-                existingChannel.analysis.lastAnalyzed = new Date();
-                existingChannel.analysis.analysisCount += 1;
-                await existingChannel.save();
-                logger.info(`Updated existing channel: ${analysisData.channelInfo.name}`);
-            } else {
-                // Create new channel
-                const newChannel = new Channel(analysisData);
-                await newChannel.save();
-                logger.info(`Saved new channel: ${analysisData.channelInfo.name}`);
-            }
-        } catch (error) {
-            logger.error('Error saving analysis to database:', error);
-        }
-    }
-
-    generateMockAnalysis(channelData) {
-        logger.info('Generating mock analysis data');
-        
-        const subscriberCount = this.parseSubscriberCount(channelData.subscriberCount) || 50000;
-        
-        return {
-            channelInfo: {
-                name: channelData.channelName || 'Sample Channel',
-                handle: channelData.channelHandle || 'samplechannel',
-                avatar: channelData.avatarUrl || '',
-                description: 'Mock channel description for demo purposes',
-                subscribers: subscriberCount,
-                url: channelData.url
-            },
-            metrics: {
-                subscribers: this.formatNumber(subscriberCount),
-                subscriberGrowth: this.estimateGrowthRate(subscriberCount),
-                engagementRate: '3.8%',
-                engagementTrend: '+0.3%',
-                avgViews: this.formatNumber(Math.round(subscriberCount * 0.08)),
-                viewsTrend: '+5.2%',
-                uploadFreq: '2.5'
-            },
-            demographics: {
-                ageGroup: '18-34 (65%)',
-                genderSplit: '60% M / 40% F',
-                topLocation: 'United States',
-                fakeScore: '2.3%'
-            },
-            content: {
-                category: 'Entertainment',
-                tags: ['entertainment', 'lifestyle'],
-                avgVideoLength: 480,
-                recentVideos: []
-            },
-            quality: {
-                fakeFollowerScore: 2.3,
-                engagementQuality: 7.5,
-                contentConsistency: 8.2,
-                isVerified: subscriberCount > 100000,
-                isMonetized: true,
-                isKidsContent: false
-            },
-            analysis: {
-                lastAnalyzed: new Date(),
-                dataFreshness: 'fresh',
-                sources: [{ source: 'mock', lastUpdated: new Date(), confidence: 0.5 }]
-            }
-        };
     }
 }
 

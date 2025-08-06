@@ -1,4 +1,4 @@
-// YouTube Influencer Analyzer - Popup Script
+// YouTube Influencer Analyzer - Popup Script (Simplified)
 class YouTubeAnalyzer {
     constructor() {
         this.apiBase = 'http://localhost:3001/api';
@@ -154,6 +154,7 @@ class YouTubeAnalyzer {
             let channelHandle = null;
             let channelName = null;
             let avatarUrl = null;
+            let description = null;
 
             // Extract channel ID from various YouTube URL patterns
             if (url.includes('/channel/')) {
@@ -183,6 +184,12 @@ class YouTubeAnalyzer {
                 subscriberCount = subsElement.textContent.trim();
             }
 
+            // Try to get description from the about page
+            const descriptionElement = document.querySelector('#description, .ytd-channel-about-metadata-renderer .description');
+            if (descriptionElement) {
+                description = descriptionElement.textContent.trim();
+            }
+
             if (channelId || channelHandle || channelName) {
                 return {
                     channelId,
@@ -190,6 +197,7 @@ class YouTubeAnalyzer {
                     channelName,
                     avatarUrl,
                     subscriberCount,
+                    description,
                     url: window.location.href
                 };
             }
@@ -223,8 +231,8 @@ class YouTubeAnalyzer {
             this.updateChannelUI(analysisData);
             this.showAnalytics();
 
-            // Start background tasks
-            this.findChannelEmail(analysisData);
+            // Find email from bio only
+            this.findChannelEmailFromBio(analysisData);
             this.loadSimilarChannels(analysisData);
 
         } catch (error) {
@@ -240,7 +248,8 @@ class YouTubeAnalyzer {
             channelInfo: {
                 name: channelInfo.channelName || 'Sample Channel',
                 handle: channelInfo.channelHandle || 'samplechannel',
-                avatar: channelInfo.avatarUrl || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjQiIGN5PSIyNCIgcj0iMjQiIGZpbGw9IiM2NjdlZWEiLz4KPHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxMiIgeT0iMTIiPgo8cGF0aCBkPSJNMTIgMTJjMi4yMSAwIDQtMS43OSA0LTRzLTEuNzktNC00LTQtNCAxLjc5LTQgNCAxLjc5IDQgNCA0em0wIDJjLTIuNjcgMC04IDEuMzQtOCA0djJoMTZ2LTJjMC0yLjY2LTUuMzMtNC04LTR6IiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4KPC9zdmc+'
+                avatar: channelInfo.avatarUrl || 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDgiIGhlaWdodD0iNDgiIHZpZXdCb3g9IjAgMCA0OCA0OCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPGNpcmNsZSBjeD0iMjQiIGN5PSIyNCIgcj0iMjQiIGZpbGw9IiM2NjdlZWEiLz4KPHN2ZyB3aWR0aD0iMjQiIGhlaWdodD0iMjQiIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIiB4PSIxMiIgeT0iMTIiPgo8cGF0aCBkPSJNMTIgMTJjMi4yMSAwIDQtMS43OSA0LTRzLTEuNzktNC00LTQtNCAxLjc5LTQgNCAxLjc5IDQgNCA0em0wIDJjLTIuNjcgMC04IDEuMzQtOCA0djJoMTZ2LTJjMC0yLjY2LTUuMzMtNC04LTR6IiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4KPC9zdmc+',
+                description: channelInfo.description || ''
             },
             metrics: {
                 subscribers: '1.2M',
@@ -251,13 +260,6 @@ class YouTubeAnalyzer {
                 viewsTrend: '+8.2%',
                 uploadFreq: '3.2'
             },
-            demographics: {
-                ageGroup: '18-34 (65%)',
-                genderSplit: '60% M / 40% F',
-                topLocation: 'United States',
-                fakeScore: '2.3%'
-            },
-            email: 'contact@example.com',
             similarChannels: [
                 { name: 'Similar Channel 1', subscribers: '980K', avatar: '', score: '87%' },
                 { name: 'Similar Channel 2', subscribers: '1.5M', avatar: '', score: '82%' },
@@ -268,6 +270,10 @@ class YouTubeAnalyzer {
         this.currentChannelData = mockData;
         this.updateChannelUI(mockData);
         this.showAnalytics();
+        
+        // Extract email from bio
+        const email = this.extractEmailFromBio(mockData.channelInfo.description);
+        this.updateEmailUI({ email });
     }
 
     updateChannelUI(data) {
@@ -284,12 +290,6 @@ class YouTubeAnalyzer {
         document.getElementById('avgViews').textContent = data.metrics.avgViews;
         document.getElementById('viewsTrend').textContent = data.metrics.viewsTrend;
         document.getElementById('uploadFreq').textContent = data.metrics.uploadFreq;
-
-        // Update demographics
-        document.getElementById('ageGroup').textContent = data.demographics.ageGroup;
-        document.getElementById('genderSplit').textContent = data.demographics.genderSplit;
-        document.getElementById('topLocation').textContent = data.demographics.topLocation;
-        document.getElementById('fakeScore').textContent = data.demographics.fakeScore;
 
         // Update engagement trend classes
         this.updateTrendClass('subscriberGrowth', data.metrics.subscriberGrowth);
@@ -308,47 +308,63 @@ class YouTubeAnalyzer {
         }
     }
 
-    async findChannelEmail(channelData) {
+    async findChannelEmailFromBio(channelData) {
         try {
-            // Start email search
-            document.getElementById('channelEmail').textContent = 'Searching...';
+            // Only search for email in the bio/description
+            const description = channelData.channelInfo?.description || '';
+            const email = this.extractEmailFromBio(description);
             
-            // Call email finder API
-            const response = await fetch(`${this.apiBase}/find-email`, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify(channelData.channelInfo)
-            });
-
-            if (response.ok) {
-                const emailData = await response.json();
-                this.updateEmailUI(emailData);
-            } else {
-                // Fallback to mock email
-                setTimeout(() => {
-                    this.updateEmailUI({ email: this.currentChannelData.email });
-                }, 2000);
-            }
+            this.updateEmailUI({ email });
+            
         } catch (error) {
             console.error('Error finding email:', error);
-            setTimeout(() => {
-                this.updateEmailUI({ email: this.currentChannelData.email });
-            }, 2000);
+            this.updateEmailUI({ email: null });
         }
+    }
+
+    extractEmailFromBio(description) {
+        if (!description) return null;
+        
+        // Simple email extraction from bio
+        const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
+        const emails = description.match(emailRegex);
+        
+        if (emails && emails.length > 0) {
+            // Filter out common non-contact emails
+            const filteredEmails = emails.filter(email => 
+                !email.includes('noreply') && 
+                !email.includes('no-reply') &&
+                !email.includes('example.com') &&
+                email.length < 100
+            );
+            
+            // Prefer business emails
+            const businessEmail = filteredEmails.find(email => 
+                email.toLowerCase().includes('business') ||
+                email.toLowerCase().includes('contact') ||
+                email.toLowerCase().includes('info') ||
+                email.toLowerCase().includes('hello')
+            );
+            
+            return businessEmail || filteredEmails[0] || null;
+        }
+        
+        return null;
     }
 
     updateEmailUI(emailData) {
         if (emailData.email) {
             document.getElementById('channelEmail').textContent = emailData.email;
             document.getElementById('copyEmailBtn').style.display = 'inline-block';
+            
+            // Show business email section if it's different
+            if (emailData.businessEmail && emailData.businessEmail !== emailData.email) {
+                document.getElementById('businessEmail').textContent = emailData.businessEmail;
+                document.getElementById('businessEmailItem').style.display = 'flex';
+            }
         } else {
-            document.getElementById('channelEmail').textContent = 'Not found';
-        }
-
-        if (emailData.businessEmail) {
-            document.getElementById('businessEmail').textContent = emailData.businessEmail;
+            document.getElementById('channelEmail').textContent = 'No email found in bio';
+            document.getElementById('copyEmailBtn').style.display = 'none';
         }
     }
 
@@ -428,7 +444,7 @@ class YouTubeAnalyzer {
 
     copyEmail() {
         const email = document.getElementById('channelEmail').textContent;
-        if (email && email !== 'Searching...' && email !== 'Not found') {
+        if (email && email !== 'Searching in bio...' && email !== 'No email found in bio') {
             navigator.clipboard.writeText(email).then(() => {
                 this.showToast('Email copied to clipboard!');
             });
@@ -453,7 +469,6 @@ class YouTubeAnalyzer {
         const data = {
             channel: this.currentChannelData.channelInfo.name,
             metrics: this.currentChannelData.metrics,
-            demographics: this.currentChannelData.demographics,
             email: document.getElementById('channelEmail').textContent,
             exportDate: new Date().toISOString()
         };

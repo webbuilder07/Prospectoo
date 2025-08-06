@@ -1,158 +1,71 @@
 const mongoose = require('mongoose');
 
 const channelSchema = new mongoose.Schema({
-    // Basic channel information
+    // Basic Channel Information
     channelId: {
         type: String,
+        required: true,
         unique: true,
-        sparse: true,
-        index: true
-    },
-    channelHandle: {
-        type: String,
         index: true
     },
     name: {
         type: String,
         required: true,
-        trim: true,
-        maxLength: 100
+        index: true
+    },
+    handle: {
+        type: String,
+        index: true
     },
     description: {
-        type: String,
-        maxLength: 5000
+        type: String
     },
     avatar: {
-        type: String,
-        validate: {
-            validator: function(v) {
-                return !v || /^https?:\/\/.+/.test(v);
-            },
-            message: 'Avatar must be a valid URL'
-        }
+        type: String
     },
     url: {
-        type: String,
-        required: true
+        type: String
     },
     
-    // Channel metrics
+    // Channel Metrics
     metrics: {
-        subscriberCount: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        subscriberGrowth: {
-            daily: { type: Number, default: 0 },
-            weekly: { type: Number, default: 0 },
-            monthly: { type: Number, default: 0 }
-        },
-        viewCount: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        videoCount: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        averageViews: {
-            type: Number,
-            default: 0,
-            min: 0
-        },
-        engagementRate: {
-            type: Number,
-            default: 0,
-            min: 0,
-            max: 100
-        },
-        uploadFrequency: {
-            type: Number,
-            default: 0,
-            min: 0
-        }
-    },
-    
-    // Audience demographics
-    demographics: {
-        ageGroups: [{
-            range: String, // e.g., "18-24"
-            percentage: Number
-        }],
-        genderSplit: {
-            male: { type: Number, default: 50 },
-            female: { type: Number, default: 50 },
-            other: { type: Number, default: 0 }
-        },
-        topLocations: [{
-            country: String,
-            percentage: Number
-        }],
-        languages: [{
-            language: String,
-            percentage: Number
-        }]
-    },
-    
-    // Content analysis
-    content: {
-        category: {
-            type: String,
-            enum: [
-                'Gaming', 'Music', 'Technology', 'Entertainment', 'Education',
-                'Sports', 'News', 'Comedy', 'Lifestyle', 'Beauty', 'Cooking',
-                'Travel', 'Fitness', 'Science', 'Art', 'Business', 'Other'
-            ],
-            default: 'Other'
-        },
-        tags: [String],
-        topics: [{
-            topic: String,
-            frequency: Number
-        }],
-        avgVideoLength: Number, // in seconds
+        subscriberCount: Number,
+        subscriberGrowth: Number,
+        videoCount: Number,
+        viewCount: Number,
+        avgViews: Number,
+        avgViewsGrowth: Number,
+        engagementRate: Number,
+        engagementTrend: Number,
+        uploadFrequency: Number,
+        lastUploadDate: Date,
+        
+        // Video Performance
         recentVideos: [{
-            videoId: String,
             title: String,
-            publishedAt: Date,
             views: Number,
             likes: Number,
             comments: Number,
-            duration: Number
-        }]
+            duration: String,
+            publishedAt: Date
+        }],
+        
+        // Growth Metrics
+        monthlyGrowth: {
+            subscribers: Number,
+            views: Number,
+            engagement: Number
+        }
     },
     
-    // Contact information
+    // Contact Information
     contact: {
-        email: {
+        email: String,
+        businessEmail: String,
+        emailSource: {
             type: String,
-            lowercase: true,
-            validate: {
-                validator: function(v) {
-                    return !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-                },
-                message: 'Invalid email format'
-            }
-        },
-        businessEmail: {
-            type: String,
-            lowercase: true,
-            validate: {
-                validator: function(v) {
-                    return !v || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-                },
-                message: 'Invalid email format'
-            }
-        },
-        socialMedia: {
-            twitter: String,
-            instagram: String,
-            facebook: String,
-            tiktok: String,
-            website: String
+            enum: ['youtube_bio', 'none'],
+            default: 'none'
         },
         emailConfidence: {
             type: Number,
@@ -160,110 +73,76 @@ const channelSchema = new mongoose.Schema({
             max: 1,
             default: 0
         },
-        emailSource: {
-            type: String,
-            enum: ['about_page', 'social_media', 'website', 'api', 'manual'],
-            default: 'api'
-        }
-    },
-    
-    // Channel quality metrics
-    quality: {
-        fakeFollowerScore: {
-            type: Number,
-            min: 0,
-            max: 100,
-            default: 0
-        },
-        engagementQuality: {
-            type: Number,
-            min: 0,
-            max: 10,
-            default: 5
-        },
-        contentConsistency: {
-            type: Number,
-            min: 0,
-            max: 10,
-            default: 5
-        },
-        isVerified: {
-            type: Boolean,
-            default: false
-        },
-        isMonetized: {
-            type: Boolean,
-            default: false
-        },
-        isKidsContent: {
-            type: Boolean,
-            default: false
-        }
-    },
-    
-    // Similar channels
-    similarChannels: [{
-        channelId: String,
-        name: String,
-        similarity: Number,
-        reason: String
-    }],
-    
-    // Analysis metadata
-    analysis: {
-        lastAnalyzed: {
-            type: Date,
-            default: Date.now
-        },
-        analysisCount: {
-            type: Number,
-            default: 1
-        },
-        dataFreshness: {
-            type: String,
-            enum: ['fresh', 'stale', 'outdated'],
-            default: 'fresh'
-        },
-        sources: [{
-            source: String,
-            lastUpdated: Date,
-            confidence: Number
+        website: String,
+        socialMedia: [{
+            platform: String,
+            url: String,
+            handle: String
         }]
     },
     
-    // Campaign tracking
-    campaigns: [{
-        campaignId: { type: mongoose.Schema.Types.ObjectId, ref: 'Campaign' },
-        status: {
-            type: String,
-            enum: ['interested', 'contacted', 'negotiating', 'confirmed', 'completed', 'rejected'],
-            default: 'interested'
-        },
-        notes: String,
-        dateAdded: { type: Date, default: Date.now }
+    // Content Analysis
+    content: {
+        categories: [String],
+        tags: [String],
+        language: String,
+        avgVideoLength: Number,
+        uploadSchedule: String,
+        contentTypes: [String],
+        collaboration: {
+            hasCollaborations: Boolean,
+            collaborationFrequency: Number,
+            commonCollaborators: [String]
+        }
+    },
+    
+    // Similar Channels
+    similarChannels: [{
+        channelId: String,
+        name: String,
+        handle: String,
+        subscriberCount: Number,
+        avatar: String,
+        similarityScore: Number,
+        reason: String,
+        category: String
     }],
     
-    // User who saved this channel
-    savedBy: {
-        type: mongoose.Schema.Types.ObjectId,
-        ref: 'User'
-    },
+    // Campaign Management
+    campaigns: [{
+        name: String,
+        status: {
+            type: String,
+            enum: ['planned', 'active', 'completed', 'cancelled'],
+            default: 'planned'
+        },
+        budget: Number,
+        startDate: Date,
+        endDate: Date,
+        goals: [String],
+        notes: String,
+        performance: {
+            reach: Number,
+            engagement: Number,
+            conversions: Number
+        }
+    }],
     
-    // Tags for organization
+    // System Data
+    lastAnalyzed: {
+        type: Date,
+        default: Date.now
+    },
+    analysisCount: {
+        type: Number,
+        default: 1
+    },
+    isActive: {
+        type: Boolean,
+        default: true
+    },
     tags: [String],
-    
-    // Notes
-    notes: {
-        type: String,
-        maxLength: 2000
-    },
-    
-    // Status
-    status: {
-        type: String,
-        enum: ['active', 'inactive', 'archived', 'blacklisted'],
-        default: 'active'
-    }
+    notes: String
 }, {
     timestamps: true,
     toJSON: { virtuals: true },
@@ -271,44 +150,62 @@ const channelSchema = new mongoose.Schema({
 });
 
 // Indexes for better query performance
-channelSchema.index({ name: 'text', description: 'text' });
 channelSchema.index({ 'metrics.subscriberCount': -1 });
-channelSchema.index({ 'content.category': 1 });
-channelSchema.index({ 'analysis.lastAnalyzed': -1 });
-channelSchema.index({ createdAt: -1 });
-channelSchema.index({ status: 1 });
+channelSchema.index({ 'metrics.engagementRate': -1 });
+channelSchema.index({ lastAnalyzed: -1 });
+channelSchema.index({ 'contact.email': 1 });
+channelSchema.index({ tags: 1 });
 
-// Virtual for engagement rate calculation
-channelSchema.virtual('engagementRateCalculated').get(function() {
-    if (!this.metrics.averageViews || !this.metrics.subscriberCount) return 0;
-    return ((this.metrics.averageViews / this.metrics.subscriberCount) * 100).toFixed(2);
+// Virtual fields
+channelSchema.virtual('subscriberCountFormatted').get(function() {
+    return this.formatNumber(this.metrics?.subscriberCount);
 });
 
-// Virtual for subscriber tier
-channelSchema.virtual('subscriberTier').get(function() {
-    const subs = this.metrics.subscriberCount;
-    if (subs >= 1000000) return 'mega';
-    if (subs >= 100000) return 'macro';
-    if (subs >= 10000) return 'mid';
-    if (subs >= 1000) return 'micro';
-    return 'nano';
+channelSchema.virtual('engagementRateFormatted').get(function() {
+    return this.metrics?.engagementRate ? `${this.metrics.engagementRate.toFixed(1)}%` : '0%';
 });
 
-// Pre-save middleware
-channelSchema.pre('save', function(next) {
-    // Update data freshness based on last analyzed date
-    const daysSinceAnalysis = (Date.now() - this.analysis.lastAnalyzed) / (1000 * 60 * 60 * 24);
-    
-    if (daysSinceAnalysis < 1) {
-        this.analysis.dataFreshness = 'fresh';
-    } else if (daysSinceAnalysis < 7) {
-        this.analysis.dataFreshness = 'stale';
-    } else {
-        this.analysis.dataFreshness = 'outdated';
+channelSchema.virtual('avgViewsFormatted').get(function() {
+    return this.formatNumber(this.metrics?.avgViews);
+});
+
+// Instance methods
+channelSchema.methods.formatNumber = function(num) {
+    if (!num) return '0';
+    if (num >= 1000000) {
+        return (num / 1000000).toFixed(1) + 'M';
+    } else if (num >= 1000) {
+        return (num / 1000).toFixed(1) + 'K';
     }
+    return num.toString();
+};
+
+channelSchema.methods.updateMetrics = function(newMetrics) {
+    this.metrics = { ...this.metrics, ...newMetrics };
+    this.lastAnalyzed = new Date();
+    this.analysisCount += 1;
+    return this.save();
+};
+
+channelSchema.methods.addSimilarChannels = function(channels) {
+    // Remove duplicates and add new similar channels
+    const existingIds = new Set(this.similarChannels.map(c => c.channelId));
+    const newChannels = channels.filter(c => !existingIds.has(c.channelId));
     
-    next();
-});
+    this.similarChannels.push(...newChannels);
+    
+    // Keep only top 10 similar channels
+    this.similarChannels = this.similarChannels
+        .sort((a, b) => b.similarityScore - a.similarityScore)
+        .slice(0, 10);
+    
+    return this.save();
+};
+
+channelSchema.methods.addCampaign = function(campaignData) {
+    this.campaigns.push(campaignData);
+    return this.save();
+};
 
 // Static methods
 channelSchema.statics.findBySubscriberRange = function(min, max) {
@@ -317,36 +214,87 @@ channelSchema.statics.findBySubscriberRange = function(min, max) {
     });
 };
 
-channelSchema.statics.findByCategory = function(category) {
-    return this.find({ 'content.category': category });
+channelSchema.statics.findByEngagementRate = function(minRate) {
+    return this.find({
+        'metrics.engagementRate': { $gte: minRate }
+    });
 };
 
 channelSchema.statics.findSimilar = function(channelId, limit = 10) {
-    return this.aggregate([
-        { $match: { channelId: { $ne: channelId } } },
-        { $addFields: { 
-            similarity: { $rand: {} } // Placeholder - would use ML similarity in production
-        }},
-        { $sort: { similarity: -1 } },
-        { $limit: limit }
-    ]);
+    return this.findById(channelId)
+        .then(channel => {
+            if (!channel) return [];
+            
+            // Find channels with similar metrics and content
+            return this.find({
+                _id: { $ne: channelId },
+                'content.categories': { $in: channel.content.categories || [] },
+                'metrics.subscriberCount': {
+                    $gte: channel.metrics.subscriberCount * 0.5,
+                    $lte: channel.metrics.subscriberCount * 2
+                }
+            })
+            .limit(limit)
+            .sort({ 'metrics.engagementRate': -1 });
+        });
 };
 
-// Instance methods
-channelSchema.methods.updateMetrics = function(newMetrics) {
-    this.metrics = { ...this.metrics, ...newMetrics };
-    this.analysis.lastAnalyzed = new Date();
-    this.analysis.analysisCount += 1;
-    return this.save();
-};
+channelSchema.statics.searchChannels = function(query, filters = {}) {
+    const searchQuery = {
+        $and: [
+            {
+                $or: [
+                    { name: { $regex: query, $options: 'i' } },
+                    { handle: { $regex: query, $options: 'i' } },
+                    { description: { $regex: query, $options: 'i' } },
+                    { tags: { $in: [new RegExp(query, 'i')] } }
+                ]
+            }
+        ]
+    };
 
-channelSchema.methods.addSimilarChannel = function(similarChannel) {
-    const existing = this.similarChannels.find(sc => sc.channelId === similarChannel.channelId);
-    if (!existing) {
-        this.similarChannels.push(similarChannel);
-        return this.save();
+    // Apply filters
+    if (filters.minSubscribers) {
+        searchQuery.$and.push({ 'metrics.subscriberCount': { $gte: filters.minSubscribers } });
     }
-    return this;
+    
+    if (filters.maxSubscribers) {
+        searchQuery.$and.push({ 'metrics.subscriberCount': { $lte: filters.maxSubscribers } });
+    }
+    
+    if (filters.minEngagement) {
+        searchQuery.$and.push({ 'metrics.engagementRate': { $gte: filters.minEngagement } });
+    }
+    
+    if (filters.categories && filters.categories.length > 0) {
+        searchQuery.$and.push({ 'content.categories': { $in: filters.categories } });
+    }
+    
+    if (filters.hasEmail) {
+        searchQuery.$and.push({ 'contact.email': { $exists: true, $ne: null } });
+    }
+
+    return this.find(searchQuery);
 };
+
+// Pre-save hooks
+channelSchema.pre('save', function(next) {
+    // Update last analyzed date if metrics changed
+    if (this.isModified('metrics')) {
+        this.lastAnalyzed = new Date();
+    }
+    
+    // Ensure analysis count is at least 1
+    if (!this.analysisCount || this.analysisCount < 1) {
+        this.analysisCount = 1;
+    }
+    
+    next();
+});
+
+// Post-save hooks
+channelSchema.post('save', function(doc) {
+    console.log(`Channel ${doc.name} has been saved/updated`);
+});
 
 module.exports = mongoose.model('Channel', channelSchema);
