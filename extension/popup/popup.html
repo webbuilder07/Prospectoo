@@ -3,124 +3,330 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTube Influencer Analyzer</title>
+    <title>NanoInfluencer AI</title>
     <link rel="stylesheet" href="popup.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
     <div class="popup-container">
-        <!-- Header -->
+        <!-- Header with Logo and Status -->
         <div class="header">
-            <div class="logo">
-                <img src="../icons/icon48.png" alt="Logo" class="logo-img">
-                <h1 class="title">YT Analyzer</h1>
+            <div class="logo-section">
+                <div class="logo">
+                    <img src="../icons/icon48.png" alt="NanoInfluencer AI" class="logo-img">
+                    <div class="brand-info">
+                        <h1 class="brand-name">NanoInfluencer AI</h1>
+                        <span class="tagline">YouTube Analytics</span>
+                    </div>
+                </div>
+                <div class="status-indicator" id="statusIndicator">
+                    <div class="status-dot success"></div>
+                    <span class="status-text">Connected</span>
+                </div>
             </div>
-            <div class="status-indicator" id="statusIndicator">
-                <span class="status-dot"></span>
-                <span class="status-text">Ready</span>
+            <div class="header-actions">
+                <button class="action-btn settings-btn" id="settingsBtn" title="Settings">
+                    <i class="fas fa-cog"></i>
+                </button>
+                <button class="action-btn upgrade-btn" id="upgradeBtn" title="Upgrade">
+                    <i class="fas fa-star"></i>
+                </button>
             </div>
         </div>
 
-        <!-- Main Content -->
+        <!-- Main Content Area -->
         <div class="main-content" id="mainContent">
+            
             <!-- Loading State -->
             <div class="loading-state" id="loadingState" style="display: none;">
-                <div class="loader"></div>
-                <p>Analyzing channel...</p>
+                <div class="loading-animation">
+                    <div class="loading-spinner"></div>
+                    <div class="loading-dots">
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                        <span class="dot"></span>
+                    </div>
+                </div>
+                <h3>Analyzing Channel</h3>
+                <p>AI is extracting insights from 1000+ data points...</p>
+                <div class="loading-progress">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                    <span class="progress-text" id="progressText">0%</span>
+                </div>
             </div>
 
             <!-- Channel Not Found -->
             <div class="not-found-state" id="notFoundState" style="display: none;">
-                <div class="icon-placeholder">📺</div>
+                <div class="empty-icon">
+                    <i class="fab fa-youtube"></i>
+                </div>
                 <h3>No YouTube Channel Found</h3>
-                <p>Navigate to a YouTube channel page to analyze influencer metrics.</p>
-                <button class="btn-primary" id="refreshBtn">Refresh</button>
-            </div>
-
-            <!-- Channel Analytics -->
-            <div class="analytics-container" id="analyticsContainer" style="display: none;">
-                <!-- Channel Header -->
-                <div class="channel-header">
-                    <img src="" alt="Channel Avatar" class="channel-avatar" id="channelAvatar">
-                    <div class="channel-info">
-                        <h3 class="channel-name" id="channelName">Loading...</h3>
-                        <p class="channel-handle" id="channelHandle">@loading</p>
-                    </div>
-                    <button class="btn-save" id="saveChannelBtn">
-                        <span class="save-icon">💾</span>
-                        Save
+                <p>Navigate to a YouTube channel page to access comprehensive influencer analytics and contact insights.</p>
+                <div class="action-buttons">
+                    <button class="btn btn-primary" id="refreshBtn">
+                        <i class="fas fa-refresh"></i>
+                        Try Again
+                    </button>
+                    <button class="btn btn-secondary" id="helpBtn">
+                        <i class="fas fa-question-circle"></i>
+                        Help
                     </button>
                 </div>
+            </div>
 
-                <!-- Key Metrics -->
-                <div class="metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-label">Subscribers</div>
-                        <div class="metric-value" id="subscriberCount">-</div>
-                        <div class="metric-change positive" id="subscriberGrowth">-</div>
+            <!-- Analytics Dashboard -->
+            <div class="analytics-dashboard" id="analyticsContainer" style="display: none;">
+                
+                <!-- Channel Header Card -->
+                <div class="card channel-header-card">
+                    <div class="channel-header">
+                        <div class="channel-avatar-container">
+                            <img src="" alt="Channel Avatar" class="channel-avatar" id="channelAvatar">
+                            <div class="verified-badge" id="verifiedBadge" style="display: none;">
+                                <i class="fas fa-check-circle"></i>
+                            </div>
+                        </div>
+                        <div class="channel-info">
+                            <h2 class="channel-name" id="channelName">Loading...</h2>
+                            <p class="channel-handle" id="channelHandle">@loading</p>
+                            <div class="channel-stats">
+                                <span class="stat" id="subscriberCount">-</span>
+                                <span class="stat-label">subscribers</span>
+                                <span class="separator">•</span>
+                                <span class="stat" id="videoCount">-</span>
+                                <span class="stat-label">videos</span>
+                            </div>
+                        </div>
+                        <div class="channel-actions">
+                            <button class="btn btn-primary btn-sm" id="saveChannelBtn">
+                                <i class="fas fa-bookmark"></i>
+                                Save
+                            </button>
+                            <button class="btn btn-secondary btn-sm" id="exportBtn">
+                                <i class="fas fa-download"></i>
+                                Export
+                            </button>
+                        </div>
                     </div>
-                    <div class="metric-card">
-                        <div class="metric-label">Engagement Rate</div>
+                </div>
+
+                <!-- Key Metrics Grid -->
+                <div class="metrics-grid">
+                    <div class="metric-card primary">
+                        <div class="metric-header">
+                            <span class="metric-icon">
+                                <i class="fas fa-chart-line"></i>
+                            </span>
+                            <span class="metric-label">Engagement Rate</span>
+                        </div>
                         <div class="metric-value" id="engagementRate">-</div>
                         <div class="metric-change" id="engagementTrend">-</div>
                     </div>
+                    
                     <div class="metric-card">
-                        <div class="metric-label">Avg Views</div>
+                        <div class="metric-header">
+                            <span class="metric-icon">
+                                <i class="fas fa-eye"></i>
+                            </span>
+                            <span class="metric-label">Avg Views</span>
+                        </div>
                         <div class="metric-value" id="avgViews">-</div>
                         <div class="metric-change" id="viewsTrend">-</div>
                     </div>
+                    
                     <div class="metric-card">
-                        <div class="metric-label">Upload Freq</div>
+                        <div class="metric-header">
+                            <span class="metric-icon">
+                                <i class="fas fa-upload"></i>
+                            </span>
+                            <span class="metric-label">Upload Freq</span>
+                        </div>
                         <div class="metric-value" id="uploadFreq">-</div>
                         <div class="metric-change neutral">per week</div>
                     </div>
+                    
+                    <div class="metric-card">
+                        <div class="metric-header">
+                            <span class="metric-icon">
+                                <i class="fas fa-shield-alt"></i>
+                            </span>
+                            <span class="metric-label">Quality Score</span>
+                        </div>
+                        <div class="metric-value" id="qualityScore">-</div>
+                        <div class="metric-change" id="qualityTrend">-</div>
+                    </div>
                 </div>
 
-                <!-- Contact Information -->
-                <div class="contact-section">
-                    <h4 class="section-title">
-                        <span class="section-icon">📧</span>
-                        Contact Information
-                    </h4>
-                    <div class="contact-grid">
-                        <div class="contact-item">
-                            <span class="contact-label">Email:</span>
-                            <span class="contact-value" id="channelEmail">Searching in bio...</span>
-                            <button class="copy-btn" id="copyEmailBtn" style="display: none;">Copy</button>
+                <!-- Contact Information Card -->
+                <div class="card contact-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-envelope"></i>
+                            Contact Information
+                        </h3>
+                        <div class="confidence-badge" id="emailConfidence" style="display: none;">
+                            <span class="confidence-score">95%</span>
+                            <span class="confidence-label">confidence</span>
                         </div>
-                        <div class="contact-item" id="businessEmailItem" style="display: none;">
-                            <span class="contact-label">Business:</span>
-                            <span class="contact-value" id="businessEmail">-</span>
+                    </div>
+                    <div class="contact-content">
+                        <div class="email-section">
+                            <div class="email-item primary-email">
+                                <div class="email-info">
+                                    <span class="email-label">Business Email</span>
+                                    <span class="email-value" id="businessEmail">Searching...</span>
+                                </div>
+                                <div class="email-actions">
+                                    <button class="btn-icon copy-btn" id="copyBusinessEmailBtn" style="display: none;" title="Copy Email">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                    <button class="btn-icon verify-btn" id="verifyBusinessEmailBtn" style="display: none;" title="Verify Email">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="email-item" id="personalEmailItem" style="display: none;">
+                                <div class="email-info">
+                                    <span class="email-label">Personal Email</span>
+                                    <span class="email-value" id="personalEmail">-</span>
+                                </div>
+                                <div class="email-actions">
+                                    <button class="btn-icon copy-btn" id="copyPersonalEmailBtn" title="Copy Email">
+                                        <i class="fas fa-copy"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="social-media-section" id="socialMediaSection" style="display: none;">
+                            <div class="social-header">
+                                <span class="social-label">Social Profiles</span>
+                            </div>
+                            <div class="social-links" id="socialLinks">
+                                <!-- Social media links will be populated here -->
+                            </div>
                         </div>
                     </div>
                 </div>
 
-                <!-- Similar Channels -->
-                <div class="similar-section">
-                    <h4 class="section-title">
-                        <span class="section-icon">🔍</span>
-                        Similar Channels
-                        <button class="btn-secondary" id="findSimilarBtn">Find More</button>
-                    </h4>
-                    <div class="similar-list" id="similarChannels">
-                        <div class="similar-item">
-                            <img src="" alt="Similar Channel" class="similar-avatar">
-                            <div class="similar-info">
-                                <div class="similar-name">Loading similar channels...</div>
-                                <div class="similar-subs">-</div>
+                <!-- Audience Demographics Card -->
+                <div class="card demographics-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-users"></i>
+                            Audience Demographics
+                        </h3>
+                        <button class="btn btn-sm btn-outline" id="fullDemographicsBtn">
+                            View Details
+                        </button>
+                    </div>
+                    <div class="demographics-content">
+                        <div class="demo-grid">
+                            <div class="demo-item">
+                                <div class="demo-chart" id="ageChart">
+                                    <div class="chart-placeholder">
+                                        <i class="fas fa-chart-pie"></i>
+                                    </div>
+                                </div>
+                                <div class="demo-info">
+                                    <span class="demo-label">Primary Age</span>
+                                    <span class="demo-value" id="primaryAge">Loading...</span>
+                                </div>
                             </div>
-                            <div class="similar-score">-</div>
+                            <div class="demo-item">
+                                <div class="demo-chart" id="genderChart">
+                                    <div class="chart-placeholder">
+                                        <i class="fas fa-chart-bar"></i>
+                                    </div>
+                                </div>
+                                <div class="demo-info">
+                                    <span class="demo-label">Gender Split</span>
+                                    <span class="demo-value" id="genderSplit">Loading...</span>
+                                </div>
+                            </div>
+                            <div class="demo-item">
+                                <div class="demo-chart" id="locationChart">
+                                    <div class="chart-placeholder">
+                                        <i class="fas fa-globe"></i>
+                                    </div>
+                                </div>
+                                <div class="demo-info">
+                                    <span class="demo-label">Top Location</span>
+                                    <span class="demo-value" id="topLocation">Loading...</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="fake-followers-alert" id="fakeFollowersAlert" style="display: none;">
+                            <div class="alert-content">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                <span class="alert-text">
+                                    <strong id="fakeFollowerPercentage">12%</strong> fake followers detected
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Similar Channels Card -->
+                <div class="card similar-channels-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-search"></i>
+                            Similar Channels
+                        </h3>
+                        <button class="btn btn-sm btn-outline" id="findMoreSimilarBtn">
+                            Find More
+                        </button>
+                    </div>
+                    <div class="similar-content">
+                        <div class="similar-list" id="similarChannelsList">
+                            <div class="similar-loading">
+                                <div class="loading-dots">
+                                    <span class="dot"></span>
+                                    <span class="dot"></span>
+                                    <span class="dot"></span>
+                                </div>
+                                <span>Finding similar channels...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Recent Videos Performance -->
+                <div class="card videos-card">
+                    <div class="card-header">
+                        <h3 class="card-title">
+                            <i class="fas fa-play"></i>
+                            Recent Videos
+                        </h3>
+                        <button class="btn btn-sm btn-outline" id="allVideosBtn">
+                            View All
+                        </button>
+                    </div>
+                    <div class="videos-content">
+                        <div class="videos-list" id="recentVideosList">
+                            <!-- Videos will be populated here -->
                         </div>
                     </div>
                 </div>
 
                 <!-- Action Buttons -->
-                <div class="action-buttons">
-                    <button class="btn-primary full-width" id="fullReportBtn">
-                        View Full Report
+                <div class="action-section">
+                    <button class="btn btn-primary full-width" id="fullReportBtn">
+                        <i class="fas fa-chart-line"></i>
+                        Generate Full Report
                     </button>
                     <div class="action-row">
-                        <button class="btn-secondary" id="exportBtn">Export Data</button>
-                        <button class="btn-secondary" id="shareBtn">Share</button>
+                        <button class="btn btn-secondary" id="campaignBtn">
+                            <i class="fas fa-plus"></i>
+                            Add to Campaign
+                        </button>
+                        <button class="btn btn-secondary" id="shareBtn">
+                            <i class="fas fa-share"></i>
+                            Share Report
+                        </button>
                     </div>
                 </div>
             </div>
@@ -128,9 +334,37 @@
 
         <!-- Footer -->
         <div class="footer">
-            <div class="credits">
-                <span>Free YouTube Analytics</span>
-                <a href="#" id="dashboardLink">Dashboard</a>
+            <div class="footer-content">
+                <div class="credits">
+                    <span class="powered-by">Powered by NanoInfluencer AI</span>
+                    <div class="footer-links">
+                        <a href="#" id="dashboardLink" class="footer-link">Dashboard</a>
+                        <a href="#" id="supportLink" class="footer-link">Support</a>
+                    </div>
+                </div>
+                <div class="usage-info">
+                    <span class="usage-text">
+                        <span id="usageCount">5</span>/<span id="usageLimit">100</span> searches today
+                    </span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tooltips and Modals -->
+    <div class="tooltip" id="tooltip" style="display: none;"></div>
+    
+    <!-- Settings Modal -->
+    <div class="modal" id="settingsModal" style="display: none;">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Settings</h3>
+                <button class="modal-close" id="closeSettingsModal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <!-- Settings content will be added here -->
             </div>
         </div>
     </div>
